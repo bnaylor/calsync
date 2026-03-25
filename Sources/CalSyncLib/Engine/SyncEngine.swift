@@ -47,14 +47,14 @@ public actor SyncEngine {
         
         if let existingMapping = mapping {
             if let googleEventID = existingMapping.googleEventID {
-                if existingMapping.checksum != currentChecksum {
+                if existingMapping.icloudChecksum != currentChecksum {
                     // Update existing event if checksum has changed
                     print("Updating existing event: \(event.title) (Google ID: \(googleEventID))")
-                    
+
                     // In a real implementation:
                     // try await googleService.updateEvent(calendarID: googleCalendarID, eventID: googleEventID, event: ...)
-                    
-                    existingMapping.checksum = currentChecksum
+
+                    existingMapping.icloudChecksum = currentChecksum
                     existingMapping.lastSyncDate = .now
                 } else {
                     // No changes needed
@@ -72,7 +72,8 @@ public actor SyncEngine {
             let newMapping = EventMapping(
                 icloudUID: icloudUID,
                 googleEventID: dummyID,
-                checksum: currentChecksum
+                calendarMappingID: "",
+                icloudChecksum: currentChecksum
             )
             modelContext.insert(newMapping)
         }
