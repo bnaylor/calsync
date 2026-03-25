@@ -1,7 +1,7 @@
 import Foundation
 import EventKit
 
-public actor iCloudService {
+public actor iCloudService: iCloudServiceProtocol {
     private let eventStore = EKEventStore()
     
     public enum ServiceError: Error {
@@ -39,5 +39,37 @@ public actor iCloudService {
         let predicate = eventStore.predicateForEvents(withStart: startDate, end: endDate, calendars: [calendar])
         return eventStore.events(matching: predicate)
             .compactMap { iCloudEvent(from: $0) }
+    }
+
+    public func createEvent(in calendarID: String, title: String, notes: String?, location: String?, startDate: Date, endDate: Date, isAllDay: Bool) async throws -> String {
+        guard let calendar = eventStore.calendar(withIdentifier: calendarID) else {
+            throw ServiceError.fetchFailed("Calendar not found: \(calendarID)")
+        }
+        let event = EKEvent(eventStore: eventStore)
+        event.calendar = calendar
+        event.title = title
+        event.notes = notes
+        event.location = location
+        event.startDate = startDate
+        event.endDate = endDate
+        event.isAllDay = isAllDay
+        try eventStore.save(event, span: .thisEvent)
+        return event.calendarItemExternalIdentifier
+    }
+
+    public func updateEvent(identifier: String, title: String, notes: String?, location: String?, startDate: Date, endDate: Date, isAllDay: Bool) async throws {
+        guard let event = eventStore.calendarItem(withIdentifier: identifier) as? EKEvent else {
+            throw ServiceError.fetchFailed("Event not found: \(identifier)")
+        }
+        event.title = title; event.notes = notes; event.location = location
+        event.startDate = startDate; event.endDate = endDate; event.isAllDay = isAllDay
+        try eventStore.save(event, span: .thisEvent)
+    }
+
+    public func deleteEvent(identifier: String) async throws {
+        guard let event = eventStore.calendarItem(withIdentifier: identifier) as? EKEvent else {
+            throw ServiceError.fetchFailed("Event not found: \(identifier)")
+        }
+        try eventStore.remove(event, span: .thisEvent)
     }
 }

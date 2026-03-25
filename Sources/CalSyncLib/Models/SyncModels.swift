@@ -11,6 +11,12 @@ public struct iCloudCalendar: Sendable, Identifiable {
         self.title = ekCalendar.title
         self.sourceTitle = ekCalendar.source.title
     }
+
+    public init(id: String, title: String, sourceTitle: String) {
+        self.id = id
+        self.title = title
+        self.sourceTitle = sourceTitle
+    }
 }
 
 public struct Attendee: Sendable {
@@ -71,5 +77,18 @@ public struct iCloudEvent: Sendable, Identifiable {
         }
 
         self.checksum = ekEvent.syncChecksum
+    }
+
+    public init(id: String, title: String, notes: String?, location: String?, startDate: Date, endDate: Date, isAllDay: Bool, status: String, attendees: [Attendee] = [], checksum: String) {
+        self.id = id
+        self.title = title
+        self.notes = notes
+        self.location = location
+        self.startDate = startDate
+        self.endDate = endDate
+        self.isAllDay = isAllDay
+        self.status = status
+        self.attendees = attendees
+        self.checksum = checksum
     }
 }
