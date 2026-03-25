@@ -3,11 +3,11 @@ import SwiftData
 import EventKit
 
 @ModelActor
-actor SyncEngine {
+public actor SyncEngine {
     private let icloudService = iCloudService()
     private let googleService = GoogleCalendarService()
     
-    func sync() async throws {
+    public func sync() async throws {
         // Fetch enabled calendar mappings
         let fetchDescriptor = FetchDescriptor<CalendarMapping>(predicate: #Predicate { $0.isEnabled })
         let mappings = try modelContext.fetch(fetchDescriptor)

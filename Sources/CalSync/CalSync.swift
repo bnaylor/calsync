@@ -1,6 +1,7 @@
 import Foundation
 import ArgumentParser
 import SwiftData
+import CalSyncLib
 
 @main
 struct CalSync: AsyncParsableCommand {

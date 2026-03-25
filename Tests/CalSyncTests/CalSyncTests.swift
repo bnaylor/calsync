@@ -1,5 +1,5 @@
 import Testing
-@testable import CalSync
+@testable import CalSyncLib
 
 @Suite("CalSync Core Tests")
 struct CalSyncTests {

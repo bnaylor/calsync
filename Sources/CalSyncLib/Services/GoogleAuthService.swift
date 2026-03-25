@@ -2,7 +2,7 @@ import Foundation
 import Network
 import AuthenticationServices
 
-actor GoogleAuthService {
+public actor GoogleAuthService {
     private let clientId: String
     private let clientSecret: String
     private let port: UInt16 = 8080
@@ -16,12 +16,12 @@ actor GoogleAuthService {
         let token_type: String
     }
     
-    init(clientId: String, clientSecret: String) {
+    public init(clientId: String, clientSecret: String) {
         self.clientId = clientId
         self.clientSecret = clientSecret
     }
     
-    func authenticate() async throws -> String {
+    public func authenticate() async throws -> String {
         let authUrl = "https://accounts.google.com/o/oauth2/v2/auth?" + [
             "client_id=\(clientId)",
             "redirect_uri=\(redirectUri)",

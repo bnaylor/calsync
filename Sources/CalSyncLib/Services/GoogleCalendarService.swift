@@ -1,6 +1,6 @@
 import Foundation
 
-actor GoogleCalendarService {
+public actor GoogleCalendarService {
     private let session = URLSession.shared
     private var accessToken: String?
     

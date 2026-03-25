@@ -4,7 +4,7 @@ import CryptoKit
 
 extension EKEvent {
     /// Generates a stable checksum of the event's content to detect changes.
-    var syncChecksum: String {
+    public var syncChecksum: String {
         var components = [
             title ?? "",
             notes ?? "",

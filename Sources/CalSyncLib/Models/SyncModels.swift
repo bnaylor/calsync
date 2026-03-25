@@ -2,12 +2,12 @@ import Foundation
 import EventKit
 
 /// Sendable representation of an iCloud Calendar
-struct iCloudCalendar: Sendable, Identifiable {
-    let id: String
-    let title: String
-    let sourceTitle: String
-    
-    init(from ekCalendar: EKCalendar) {
+public struct iCloudCalendar: Sendable, Identifiable {
+    public let id: String
+    public let title: String
+    public let sourceTitle: String
+
+    public init(from ekCalendar: EKCalendar) {
         self.id = ekCalendar.calendarIdentifier
         self.title = ekCalendar.title
         self.sourceTitle = ekCalendar.source.title
@@ -15,17 +15,17 @@ struct iCloudCalendar: Sendable, Identifiable {
 }
 
 /// Sendable representation of an iCloud Event
-struct iCloudEvent: Sendable, Identifiable {
-    let id: String
-    let title: String
-    let notes: String?
-    let location: String?
-    let startDate: Date
-    let endDate: Date
-    let isAllDay: Bool
-    let checksum: String
-    
-    init(from ekEvent: EKEvent) {
+public struct iCloudEvent: Sendable, Identifiable {
+    public let id: String
+    public let title: String
+    public let notes: String?
+    public let location: String?
+    public let startDate: Date
+    public let endDate: Date
+    public let isAllDay: Bool
+    public let checksum: String
+
+    public init(from ekEvent: EKEvent) {
         self.id = ekEvent.calendarItemExternalIdentifier ?? ekEvent.eventIdentifier
         self.title = ekEvent.title ?? "Untitled"
         self.notes = ekEvent.notes

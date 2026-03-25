@@ -12,15 +12,19 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
     ],
     targets: [
-        .executableTarget(
-            name: "CalSync",
+        .target(
+            name: "CalSyncLib",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),
+        .executableTarget(
+            name: "CalSync",
+            dependencies: ["CalSyncLib"]
+        ),
         .testTarget(
             name: "CalSyncTests",
-            dependencies: ["CalSync"]
+            dependencies: ["CalSyncLib"]
         ),
     ]
 )
