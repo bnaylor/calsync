@@ -1,13 +1,11 @@
 import Foundation
 import Network
-import AuthenticationServices
 
 public actor GoogleAuthService {
-    private let clientId: String
-    private let clientSecret: String
+    private let keychain: KeychainService
     private let port: UInt16 = 8080
     private let redirectUri = "http://localhost:8080"
-    
+
     struct TokenResponse: Codable {
         let access_token: String
         let refresh_token: String?
@@ -15,13 +13,21 @@ public actor GoogleAuthService {
         let scope: String
         let token_type: String
     }
-    
-    public init(clientId: String, clientSecret: String) {
-        self.clientId = clientId
-        self.clientSecret = clientSecret
+
+    public enum AuthError: Error {
+        case notAuthenticated
+        case refreshFailed(String)
+        case missingCredentials
     }
-    
-    public func authenticate() async throws -> String {
+
+    public init(keychain: KeychainService = KeychainService()) {
+        self.keychain = keychain
+    }
+
+    public func authenticate(clientId: String, clientSecret: String) async throws {
+        try keychain.save(key: "clientId", value: clientId)
+        try keychain.save(key: "clientSecret", value: clientSecret)
+
         let authUrl = "https://accounts.google.com/o/oauth2/v2/auth?" + [
             "client_id=\(clientId)",
             "redirect_uri=\(redirectUri)",
@@ -30,17 +36,70 @@ public actor GoogleAuthService {
             "access_type=offline",
             "prompt=consent"
         ].joined(separator: "&")
-        
+
         print("Please open this URL in your browser to authenticate:")
         print(authUrl)
-        
+
         let code = try await waitForRedirect()
-        return try await exchangeCodeForToken(code)
+        let tokenResponse = try await exchangeCodeForToken(code, clientId: clientId, clientSecret: clientSecret)
+
+        try keychain.save(key: "accessToken", value: tokenResponse.access_token)
+        if let refreshToken = tokenResponse.refresh_token {
+            try keychain.save(key: "refreshToken", value: refreshToken)
+        }
+        let expiresAt = Date().addingTimeInterval(TimeInterval(tokenResponse.expires_in))
+        try keychain.save(key: "expiresAt", value: String(expiresAt.timeIntervalSince1970))
+
+        print("Successfully authenticated! Tokens stored in Keychain.")
     }
-    
+
+    public func getValidAccessToken() async throws -> String {
+        guard let accessToken = try keychain.retrieve(key: "accessToken") else {
+            throw AuthError.notAuthenticated
+        }
+        if let expiresAtStr = try keychain.retrieve(key: "expiresAt"),
+           let expiresAt = Double(expiresAtStr) {
+            if Date().timeIntervalSince1970 < expiresAt - 60 {
+                return accessToken
+            }
+        }
+        return try await refreshAccessToken()
+    }
+
+    public func refreshAccessToken() async throws -> String {
+        guard let refreshToken = try keychain.retrieve(key: "refreshToken"),
+              let clientId = try keychain.retrieve(key: "clientId"),
+              let clientSecret = try keychain.retrieve(key: "clientSecret") else {
+            throw AuthError.missingCredentials
+        }
+
+        var request = URLRequest(url: URL(string: "https://oauth2.googleapis.com/token")!)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        let body = [
+            "refresh_token=\(refreshToken)",
+            "client_id=\(clientId)",
+            "client_secret=\(clientSecret)",
+            "grant_type=refresh_token"
+        ].joined(separator: "&")
+        request.httpBody = body.data(using: .utf8)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw AuthError.refreshFailed(String(data: data, encoding: .utf8) ?? "Unknown error")
+        }
+
+        let tokenResponse = try JSONDecoder().decode(TokenResponse.self, from: data)
+        try keychain.save(key: "accessToken", value: tokenResponse.access_token)
+        let expiresAt = Date().addingTimeInterval(TimeInterval(tokenResponse.expires_in))
+        try keychain.save(key: "expiresAt", value: String(expiresAt.timeIntervalSince1970))
+        return tokenResponse.access_token
+    }
+
     private func waitForRedirect() async throws -> String {
         let listener = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: port)!)
-        
+
         return try await withCheckedThrowingContinuation { continuation in
             listener.newConnectionHandler = { connection in
                 connection.start(queue: .main)
@@ -71,17 +130,16 @@ public actor GoogleAuthService {
             listener.start(queue: .main)
         }
     }
-    
+
     private func extractQueryParam(from url: String, name: String) -> String? {
         guard let urlComponents = URLComponents(string: "http://localhost\(url)") else { return nil }
         return urlComponents.queryItems?.first(where: { $0.name == name })?.value
     }
-    
-    private func exchangeCodeForToken(_ code: String) async throws -> String {
+
+    private func exchangeCodeForToken(_ code: String, clientId: String, clientSecret: String) async throws -> TokenResponse {
         var request = URLRequest(url: URL(string: "https://oauth2.googleapis.com/token")!)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        
         let body = [
             "code=\(code)",
             "client_id=\(clientId)",
@@ -89,16 +147,13 @@ public actor GoogleAuthService {
             "redirect_uri=\(redirectUri)",
             "grant_type=authorization_code"
         ].joined(separator: "&")
-        
         request.httpBody = body.data(using: .utf8)
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
-            throw NSError(domain: "GoogleAuth", code: 1, userInfo: [NSLocalizedDescriptionKey: "Token exchange failed: \(String(data: data, encoding: .utf8) ?? "")"])
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw AuthError.refreshFailed(String(data: data, encoding: .utf8) ?? "Token exchange failed")
         }
-        
-        let tokenResponse = try JSONDecoder().decode(TokenResponse.self, from: data)
-        // In a real app, we'd save the refresh token securely in Keychain
-        return tokenResponse.access_token
+        return try JSONDecoder().decode(TokenResponse.self, from: data)
     }
 }

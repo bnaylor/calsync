@@ -12,21 +12,16 @@ struct CalSync: AsyncParsableCommand {
     
     struct Auth: AsyncParsableCommand {
         static let configuration = CommandConfiguration(abstract: "Authenticate with Google Calendar.")
-        
+
         @Argument(help: "Google Client ID")
         var clientId: String
-        
+
         @Argument(help: "Google Client Secret")
         var clientSecret: String
-        
+
         func run() async throws {
-            let authService = GoogleAuthService(clientId: clientId, clientSecret: clientSecret)
-            let token = try await authService.authenticate()
-            
-            // For now, print it. In the future, save to Keychain.
-            print("\nSuccessfully authenticated!")
-            print("Access Token: \(token)")
-            print("\nNOTE: In a production version, this would be saved securely in the macOS Keychain.")
+            let authService = GoogleAuthService()
+            try await authService.authenticate(clientId: clientId, clientSecret: clientSecret)
         }
     }
     
