@@ -115,32 +115,37 @@ All dates are normalized to ISO 8601 UTC before hashing to avoid false-positive 
 
 ## Sync Engine Flow
 
-### Phase 1: iCloud to Google (forward sync)
+### Phase 1: iCloud state detection (forward sync)
 
 1. Fetch iCloud events for the configured sync window
 2. For each event, compute current iCloud checksum
 3. No existing mapping: create event on Google, store both checksums, set `syncDirection: "icloud"`
 4. Mapping exists, iCloud checksum changed: update Google event, store new checksums
-5. Mapping exists but no matching iCloud event: mark `deletedOnIcloud = true`, delete from Google
+5. Mapping exists but no matching iCloud event: set `deletedOnIcloud = true` (no deletion here — Phase 3 arbitrates)
 
-### Phase 2: Google to iCloud (reverse sync)
+### Phase 2: Google state detection (reverse sync)
 
 1. Fetch Google events for each mapped calendar
 2. For each event with an existing mapping, compute current Google checksum
 3. Google checksum changed AND iCloud checksum unchanged: push changes to iCloud via EventKit
 4. Google checksum changed AND iCloud checksum also changed: iCloud wins, overwrite Google
 5. Google event has no existing mapping: create in iCloud, store new EventMapping with `syncDirection: "google"` and both checksums
-6. Event has `syncDirection: "google"` with no iCloud counterpart AND `deletedOnIcloud` is NOT set: create in iCloud via EventKit
-7. For each EventMapping whose `googleEventID` is not found in fetched Google events: set `deletedOnGoogle = true`
+6. For each EventMapping whose `googleEventID` is not found in fetched Google events: set `deletedOnGoogle = true`
 
-**Important:** Step 6 checks the `deletedOnIcloud` flag set by Phase 1 to prevent resurrecting events that the iCloud calendar owner intentionally deleted.
+**Phase boundaries:** Phase 1 and 2 detect state changes and set flags. Actual deletions are deferred to Phase 3, which has the full picture (both flags + origination direction) to make the right call.
 
-### Phase 3: Cleanup
+### Phase 3: Deletion arbitration
 
-1. `deletedOnGoogle` + originated from Google: delete the iCloud event
-2. `deletedOnGoogle` + originated from iCloud: recreate on Google (owner didn't delete it)
-3. `deletedOnIcloud` + originated from Google: delete from Google (iCloud owner's deletion is authoritative, consistent with iCloud-wins)
-4. Purge completed deletion mappings
+Complete deletion matrix based on origination and which side the event disappeared from:
+
+| Condition | Action |
+|-----------|--------|
+| `deletedOnIcloud` + originated from iCloud | Delete from Google, purge mapping (owner deleted their own event) |
+| `deletedOnIcloud` + originated from Google | Delete from Google, purge mapping (iCloud-wins: calendar owner's deletion is authoritative) |
+| `deletedOnGoogle` + originated from Google | Delete from iCloud, purge mapping (user deleted their own event) |
+| `deletedOnGoogle` + originated from iCloud | Recreate on Google, clear flag (owner didn't delete it — accidental or unwanted Google-side deletion) |
+
+After processing, purge any remaining resolved mappings.
 
 ## OAuth2 & Token Management
 
@@ -221,6 +226,10 @@ The existing codebase was built for one-way (iCloud → Google) sync in a corpor
 ### Recurring events
 
 EventKit's `events(matching:)` returns individual occurrences of recurring events, all sharing the same `calendarItemExternalIdentifier`. To handle this, `icloudUID` uses a composite key: `calendarItemExternalIdentifier + "|" + occurrenceStartDate` (ISO 8601 UTC). This ensures uniqueness per occurrence while maintaining traceability to the parent event.
+
+**Important:** The existing code falls back to `eventIdentifier` when `calendarItemExternalIdentifier` is nil. This fallback must be removed — `eventIdentifier` is instance-specific and not stable across syncs, which would break the composite key strategy. If `calendarItemExternalIdentifier` is nil, the event should be skipped with a warning.
+
+V1 treats each occurrence independently. If a user edits "all future events" on Google Calendar, the API returns a mix of modified and unmodified instances — the per-occurrence approach handles this correctly by design, updating each occurrence individually based on its own checksum.
 
 ## Future Considerations
 
