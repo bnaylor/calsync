@@ -1,30 +1,23 @@
 import Foundation
 import EventKit
-import CryptoKit
 
 extension EKEvent {
-    /// Generates a stable checksum of the event's content to detect changes.
     public var syncChecksum: String {
-        var components = [
-            title ?? "",
-            notes ?? "",
-            location ?? "",
-            startDate.description,
-            endDate.description,
-            String(isAllDay)
-        ]
-        
-        // Add recurrence rules if any
-        if let rules = recurrenceRules {
-            for rule in rules {
-                components.append(rule.description)
-            }
+        let statusString: String
+        switch status {
+        case .confirmed: statusString = "confirmed"
+        case .tentative: statusString = "tentative"
+        case .canceled: statusString = "cancelled"
+        default: statusString = "confirmed"
         }
-        
-        let combined = components.joined(separator: "|")
-        let data = Data(combined.utf8)
-        let hash = SHA256.hash(data: data)
-        
-        return hash.compactMap { String(format: "%02x", $0) }.joined()
+        return Checksum.compute(
+            title: title ?? "",
+            description: notes,
+            location: location,
+            startDate: startDate,
+            endDate: endDate,
+            isAllDay: isAllDay,
+            status: statusString
+        )
     }
 }

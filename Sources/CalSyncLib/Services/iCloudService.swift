@@ -38,6 +38,6 @@ public actor iCloudService {
         
         let predicate = eventStore.predicateForEvents(withStart: startDate, end: endDate, calendars: [calendar])
         return eventStore.events(matching: predicate)
-            .map { iCloudEvent(from: $0) }
+            .compactMap { iCloudEvent(from: $0) }
     }
 }
