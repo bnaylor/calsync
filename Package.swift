@@ -14,13 +14,14 @@ let package = Package(
     targets: [
         .target(
             name: "CalSyncLib",
-            dependencies: [
-                .product(name: "ArgumentParser", package: "swift-argument-parser"),
-            ]
+            dependencies: []
         ),
         .executableTarget(
             name: "CalSync",
-            dependencies: ["CalSyncLib"]
+            dependencies: [
+                "CalSyncLib",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ]
         ),
         .testTarget(
             name: "CalSyncTests",
