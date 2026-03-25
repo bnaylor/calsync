@@ -5,6 +5,11 @@ We have successfully scaffolded the core architecture for a native macOS CLI too
 
 ### Completed
 - **Project Initialization:** Created a Swift 6.2 executable package (`CalSync`).
+- **Phase 2 (Menu Bar App):** Scaffolded a standalone SwiftUI menu bar app (`CalSyncApp`) that wraps `CalSyncLib`.
+  - **Status Interface:** Implemented a `MenuBarExtra` view for quick status and sync control.
+  - **Configuration UI:** Built a dedicated `Settings` window for Google OAuth and calendar mapping.
+  - **Reactive Architecture:** Integrated `CalSyncLib` with an `@Observable` `AppState` for real-time UI updates.
+  - **Isolated Build:** Set up the app in a side-car directory (`CalSyncApp/`) to avoid touching Phase 1 files.
 - **Architecture Design:** Documented in `docs/design.md`, focusing on security (preventing Google -> iCloud leakage) and performance (using native `EventKit`).
 - **Data Models:** Implemented `EventMapping` and `CalendarMapping` using **SwiftData** for local state persistence.
 - **iCloud Integration:** Created `iCloudService` to interface with the macOS `EventKit` database.
