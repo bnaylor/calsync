@@ -64,6 +64,7 @@ CalSync CLI
 final class EventMapping {
     @Attribute(.unique) var icloudUID: String
     var googleEventID: String?
+    var calendarMappingID: String   // links to parent CalendarMapping.icloudIdentifier
     var lastSyncDate: Date
     var icloudChecksum: String?    // hash of iCloud event state at last sync
     var googleChecksum: String?    // hash of Google event state at last sync
@@ -72,6 +73,8 @@ final class EventMapping {
     var deletedOnGoogle: Bool      // event disappeared from Google
 }
 ```
+
+**Note on `icloudUID`:** For recurring events, EventKit's `calendarItemExternalIdentifier` is shared across all occurrences. To avoid uniqueness collisions, the UID is composed as `calendarItemExternalIdentifier + "|" + occurrenceDate` (ISO 8601 UTC). For non-recurring events, the occurrence date suffix is omitted.
 
 ### CalendarMapping (SwiftData)
 
@@ -94,9 +97,21 @@ Existing fields plus:
 - `attendees: [(name: String, status: EKParticipantStatus)]`
 - `status: EKEventStatus`
 
-### Google-side Checksum
+### Checksum Fields
 
-Computed symmetrically to the iCloud checksum: SHA-256 hash of summary, description, start, end, location, status fields. Stored in `EventMapping.googleChecksum`.
+Both iCloud and Google checksums are SHA-256 hashes of the same semantic fields to ensure symmetry. Fields included:
+
+- Title / summary
+- Description / notes
+- Location
+- Start date (ISO 8601 UTC)
+- End date (ISO 8601 UTC)
+- All-day flag
+- Event status (confirmed, tentative, cancelled)
+
+**Not checksummed:** Attendees (RSVP status changes from other attendees would cause constant churn), recurrence rules (handled via occurrence-based UIDs).
+
+All dates are normalized to ISO 8601 UTC before hashing to avoid false-positive changes from locale or time zone differences.
 
 ## Sync Engine Flow
 
@@ -114,13 +129,18 @@ Computed symmetrically to the iCloud checksum: SHA-256 hash of summary, descript
 2. For each event with an existing mapping, compute current Google checksum
 3. Google checksum changed AND iCloud checksum unchanged: push changes to iCloud via EventKit
 4. Google checksum changed AND iCloud checksum also changed: iCloud wins, overwrite Google
-5. Event has `syncDirection: "google"` with no iCloud counterpart: create in iCloud via EventKit
+5. Google event has no existing mapping: create in iCloud, store new EventMapping with `syncDirection: "google"` and both checksums
+6. Event has `syncDirection: "google"` with no iCloud counterpart AND `deletedOnIcloud` is NOT set: create in iCloud via EventKit
+7. For each EventMapping whose `googleEventID` is not found in fetched Google events: set `deletedOnGoogle = true`
+
+**Important:** Step 6 checks the `deletedOnIcloud` flag set by Phase 1 to prevent resurrecting events that the iCloud calendar owner intentionally deleted.
 
 ### Phase 3: Cleanup
 
 1. `deletedOnGoogle` + originated from Google: delete the iCloud event
 2. `deletedOnGoogle` + originated from iCloud: recreate on Google (owner didn't delete it)
-3. Purge completed deletion mappings
+3. `deletedOnIcloud` + originated from Google: delete from Google (iCloud owner's deletion is authoritative, consistent with iCloud-wins)
+4. Purge completed deletion mappings
 
 ## OAuth2 & Token Management
 
@@ -174,15 +194,36 @@ Computed symmetrically to the iCloud checksum: SHA-256 hash of summary, descript
 - **Network failures:** Log error, skip event, don't update checksums so it retries next run. No retry loops within a single run.
 - **EventKit permission denied:** Clear error message with instructions to grant Calendar access in System Settings > Privacy & Security > Calendars.
 - **Shared calendar read-only:** If EventKit write-back fails due to permissions, log a warning, skip, and mark the mapping as read-only for future runs.
-- **Token expiry mid-sync:** Attempt one token refresh on 401. If that fails, abort with message to re-run `calsync auth`.
+- **Token expiry mid-sync:** `GoogleCalendarService` handles 401 responses internally — attempts one token refresh and retries the request. If refresh fails, surfaces an auth error. This keeps auth concerns out of `SyncEngine`.
 - **Stale mappings:** If a calendar mapping points to an iCloud calendar that no longer exists, log it and disable the mapping.
 
 ## Logging
 
 Simple structured logging via `os.Logger` or plain file writes. stdout/stderr for manual runs, `~/Library/Logs/calsync.log` for launchd runs. No external logging framework.
 
+## Implementation Notes
+
+### Changes from existing code
+
+The existing codebase was built for one-way (iCloud → Google) sync in a corporate context. Key changes required:
+
+- **`EventMapping`:** Add `calendarMappingID`, split `checksum` into `icloudChecksum`/`googleChecksum`, add `syncDirection`, `deletedOnIcloud`, `deletedOnGoogle`
+- **`CalendarMapping`:** Add `syncWindowPast`, `syncWindowFuture`, `autoCreateGoogleCalendar`
+- **`iCloudEvent`:** Add `attendees` and `status` fields
+- **`iCloudService`:** Add `createEvent(in:)`, `updateEvent(_:)`, `deleteEvent(_:)` methods for write-back
+- **`GoogleCalendarService`:** Add `location`, `status`, `attendees` to `GoogleEvent` struct. Add 401/token-refresh interceptor.
+- **`GoogleAuthService`:** Store tokens in Keychain instead of printing. Add token refresh flow.
+- **`SyncEngine`:** Rewrite from one-way to three-phase bidirectional sync. Use configurable sync window with lookback.
+- **`EKEvent+Checksum`:** Normalize dates to ISO 8601 UTC. Add `status` to checksum. Remove locale-dependent `Date.description`.
+- **`configure` command:** Change from requiring both IDs to taking only `<icloud-id>` and auto-creating a dedicated Google calendar via `calendars.insert`.
+- **CLI:** Add `status`, `install`, `uninstall` subcommands.
+
+### Recurring events
+
+EventKit's `events(matching:)` returns individual occurrences of recurring events, all sharing the same `calendarItemExternalIdentifier`. To handle this, `icloudUID` uses a composite key: `calendarItemExternalIdentifier + "|" + occurrenceStartDate` (ISO 8601 UTC). This ensures uniqueness per occurrence while maintaining traceability to the parent event.
+
 ## Future Considerations
 
 - **Menubar app:** The architecture supports this cleanly. All logic is in the services/engine layer, not the CLI. A menubar app would be a different frontend calling the same components. Would require extracting core logic into a library target in `Package.swift` — straightforward refactor, not a design change.
 - **Delta sync:** Google Calendar sync tokens to minimize API usage.
-- **Recurrence:** Proper handling of recurring event series (expand vs. master event).
+- **Recurring event editing:** Editing a single occurrence vs. all future occurrences of a recurring series. V1 treats each occurrence independently.
