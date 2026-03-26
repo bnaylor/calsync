@@ -8,7 +8,7 @@ public actor GoogleCalendarService: GoogleCalendarServiceProtocol {
     public enum ServiceError: Error {
         case authenticationRequired
         case apiError(Int, String)
-        case decodingError(String)
+        case invalidURL(String)
     }
 
     public init(authService: GoogleAuthService = GoogleAuthService()) {
@@ -45,11 +45,18 @@ public actor GoogleCalendarService: GoogleCalendarServiceProtocol {
             let items: [GoogleEvent]?
         }
         let formatter = ISO8601DateFormatter()
-        let minStr = formatter.string(from: timeMin)
-        let maxStr = formatter.string(from: timeMax)
         let encodedCalID = calendarID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? calendarID
-        let path = "/calendars/\(encodedCalID)/events?timeMin=\(minStr)&timeMax=\(maxStr)&singleEvents=true&maxResults=2500"
-        let data = try await authenticatedRequest(path: path, method: "GET")
+        var components = URLComponents(string: baseURL + "/calendars/\(encodedCalID)/events")!
+        components.queryItems = [
+            URLQueryItem(name: "timeMin", value: formatter.string(from: timeMin)),
+            URLQueryItem(name: "timeMax", value: formatter.string(from: timeMax)),
+            URLQueryItem(name: "singleEvents", value: "true"),
+            URLQueryItem(name: "maxResults", value: "2500"),
+        ]
+        guard let url = components.url else {
+            throw ServiceError.invalidURL(calendarID)
+        }
+        let data = try await authenticatedRequest(url: url, method: "GET")
         let list = try JSONDecoder().decode(EventList.self, from: data)
         return list.items ?? []
     }
@@ -77,9 +84,16 @@ public actor GoogleCalendarService: GoogleCalendarServiceProtocol {
 
     // MARK: - Auth Interceptor
 
-    private func authenticatedRequest(path: String, method: String, body: Data? = nil, expectEmpty: Bool = false, isRetry: Bool = false) async throws -> Data {
+    private func authenticatedRequest(path: String, method: String, body: Data? = nil, expectEmpty: Bool = false) async throws -> Data {
+        guard let url = URL(string: baseURL + path) else {
+            throw ServiceError.invalidURL(path)
+        }
+        return try await authenticatedRequest(url: url, method: method, body: body, expectEmpty: expectEmpty)
+    }
+
+    private func authenticatedRequest(url: URL, method: String, body: Data? = nil, expectEmpty: Bool = false, isRetry: Bool = false) async throws -> Data {
         let token = try await authService.getValidAccessToken()
-        var request = URLRequest(url: URL(string: baseURL + path)!)
+        var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         if let body {
@@ -95,7 +109,7 @@ public actor GoogleCalendarService: GoogleCalendarServiceProtocol {
         // 401 retry with token refresh (once)
         if httpResponse.statusCode == 401 && !isRetry {
             _ = try await authService.refreshAccessToken()
-            return try await authenticatedRequest(path: path, method: method, body: body, expectEmpty: expectEmpty, isRetry: true)
+            return try await authenticatedRequest(url: url, method: method, body: body, expectEmpty: expectEmpty, isRetry: true)
         }
 
         if expectEmpty && httpResponse.statusCode == 204 {
