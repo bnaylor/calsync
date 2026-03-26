@@ -2,89 +2,111 @@ import Foundation
 
 public actor GoogleCalendarService: GoogleCalendarServiceProtocol {
     private let session = URLSession.shared
-    private var accessToken: String?
+    private let authService: GoogleAuthService
+    private let baseURL = "https://www.googleapis.com/calendar/v3"
 
-    enum ServiceError: Error {
+    public enum ServiceError: Error {
         case authenticationRequired
-        case apiError(String)
-        case decodingError
+        case apiError(Int, String)
+        case decodingError(String)
     }
 
-    public init() {}
-
-    public func setAccessToken(_ token: String) {
-        self.accessToken = token
+    public init(authService: GoogleAuthService = GoogleAuthService()) {
+        self.authService = authService
     }
+
+    // MARK: - API Methods
 
     public func listCalendars() async throws -> [String: String] {
-        // Stub — Task 6 fully implements
-        return [:]
+        struct CalendarList: Codable {
+            struct Item: Codable { let id: String; let summary: String }
+            let items: [Item]?
+        }
+        let data = try await authenticatedRequest(path: "/users/me/calendarList", method: "GET")
+        let list = try JSONDecoder().decode(CalendarList.self, from: data)
+        var result: [String: String] = [:]
+        for item in list.items ?? [] {
+            result[item.id] = item.summary
+        }
+        return result
     }
 
     public func createCalendar(name: String) async throws -> String {
-        // Stub — Task 6 fully implements
-        return ""
+        struct CalendarBody: Codable { let summary: String }
+        struct CalendarResponse: Codable { let id: String }
+        let body = try JSONEncoder().encode(CalendarBody(summary: name))
+        let data = try await authenticatedRequest(path: "/calendars", method: "POST", body: body)
+        let response = try JSONDecoder().decode(CalendarResponse.self, from: data)
+        return response.id
     }
 
     public func listEvents(calendarID: String, timeMin: Date, timeMax: Date) async throws -> [GoogleEvent] {
-        // Stub — Task 6 fully implements
-        return []
+        struct EventList: Codable {
+            let items: [GoogleEvent]?
+        }
+        let formatter = ISO8601DateFormatter()
+        let minStr = formatter.string(from: timeMin)
+        let maxStr = formatter.string(from: timeMax)
+        let encodedCalID = calendarID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? calendarID
+        let path = "/calendars/\(encodedCalID)/events?timeMin=\(minStr)&timeMax=\(maxStr)&singleEvents=true&maxResults=2500"
+        let data = try await authenticatedRequest(path: path, method: "GET")
+        let list = try JSONDecoder().decode(EventList.self, from: data)
+        return list.items ?? []
     }
 
     public func createEvent(calendarID: String, event: GoogleEvent) async throws -> String {
-        guard let token = accessToken else { throw ServiceError.authenticationRequired }
-
-        var request = URLRequest(url: URL(string: "https://www.googleapis.com/calendar/v3/calendars/\(calendarID)/events")!)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let encoder = JSONEncoder()
-        request.httpBody = try encoder.encode(event)
-
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
-            throw ServiceError.apiError("Failed to create event: \(String(data: data, encoding: .utf8) ?? "Unknown error")")
-        }
-
-        let decoder = JSONDecoder()
-        let createdEvent = try decoder.decode(GoogleEvent.self, from: data)
-
-        return createdEvent.id ?? ""
+        let encodedCalID = calendarID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? calendarID
+        let body = try JSONEncoder().encode(event)
+        let data = try await authenticatedRequest(path: "/calendars/\(encodedCalID)/events", method: "POST", body: body)
+        let created = try JSONDecoder().decode(GoogleEvent.self, from: data)
+        return created.id ?? ""
     }
 
     public func updateEvent(calendarID: String, eventID: String, event: GoogleEvent) async throws {
-        guard let token = accessToken else { throw ServiceError.authenticationRequired }
-
-        var request = URLRequest(url: URL(string: "https://www.googleapis.com/calendar/v3/calendars/\(calendarID)/events/\(eventID)")!)
-        request.httpMethod = "PUT"
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let encoder = JSONEncoder()
-        request.httpBody = try encoder.encode(event)
-
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
-            throw ServiceError.apiError("Failed to update event: \(String(data: data, encoding: .utf8) ?? "Unknown error")")
-        }
+        let encodedCalID = calendarID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? calendarID
+        let encodedEventID = eventID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? eventID
+        let body = try JSONEncoder().encode(event)
+        _ = try await authenticatedRequest(path: "/calendars/\(encodedCalID)/events/\(encodedEventID)", method: "PUT", body: body)
     }
 
     public func deleteEvent(calendarID: String, eventID: String) async throws {
-        guard let token = accessToken else { throw ServiceError.authenticationRequired }
+        let encodedCalID = calendarID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? calendarID
+        let encodedEventID = eventID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? eventID
+        _ = try await authenticatedRequest(path: "/calendars/\(encodedCalID)/events/\(encodedEventID)", method: "DELETE", expectEmpty: true)
+    }
 
-        var request = URLRequest(url: URL(string: "https://www.googleapis.com/calendar/v3/calendars/\(calendarID)/events/\(eventID)")!)
-        request.httpMethod = "DELETE"
+    // MARK: - Auth Interceptor
+
+    private func authenticatedRequest(path: String, method: String, body: Data? = nil, expectEmpty: Bool = false, isRetry: Bool = false) async throws -> Data {
+        let token = try await authService.getValidAccessToken()
+        var request = URLRequest(url: URL(string: baseURL + path)!)
+        request.httpMethod = method
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = body
+        }
 
         let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) && httpResponse.statusCode != 204 else {
-            // 204 No Content is success for DELETE
-            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 204 { return }
-            throw ServiceError.apiError("Failed to delete event: \(String(data: data, encoding: .utf8) ?? "Unknown error")")
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ServiceError.apiError(0, "No HTTP response")
         }
+
+        // 401 retry with token refresh (once)
+        if httpResponse.statusCode == 401 && !isRetry {
+            _ = try await authService.refreshAccessToken()
+            return try await authenticatedRequest(path: path, method: method, body: body, expectEmpty: expectEmpty, isRetry: true)
+        }
+
+        if expectEmpty && httpResponse.statusCode == 204 {
+            return Data()
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let message = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw ServiceError.apiError(httpResponse.statusCode, message)
+        }
+
+        return data
     }
 }
