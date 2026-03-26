@@ -1,39 +1,34 @@
 # CalSync Project Status
 
-## Current Progress
-We have successfully scaffolded the core architecture for a native macOS CLI tool to sync iCloud calendars to Google Calendar.
+## Current State
+Personal-use bidirectional sync tool between private shared iCloud calendars and Google Calendar. Pivoted from a corporate use case to home use.
 
 ### Completed
-- **Project Initialization:** Created a Swift 6.2 executable package (`CalSync`).
-- **Phase 2 (Menu Bar App):** Scaffolded a standalone SwiftUI menu bar app (`CalSyncApp`) that wraps `CalSyncLib`.
-  - **Status Interface:** Implemented a `MenuBarExtra` view for quick status and sync control.
-  - **Configuration UI:** Built a dedicated `Settings` window for Google OAuth and calendar mapping.
-  - **Reactive Architecture:** Integrated `CalSyncLib` with an `@Observable` `AppState` for real-time UI updates.
-  - **Isolated Build:** Set up the app in a side-car directory (`CalSyncApp/`) to avoid touching Phase 1 files.
-- **Architecture Design:** Documented in `docs/design.md`, focusing on security (preventing Google -> iCloud leakage) and performance (using native `EventKit`).
-- **Data Models:** Implemented `EventMapping` and `CalendarMapping` using **SwiftData** for local state persistence.
-- **iCloud Integration:** Created `iCloudService` to interface with the macOS `EventKit` database.
-- **Sync Engine:** Implemented `SyncEngine` with:
-  - One-way sync logic (iCloud to Google).
-  - Stable checksum-based change detection (`SHA-256`) to minimize API calls.
-  - Swift concurrency (`actor` and `@ModelActor`) for thread safety.
-- **CLI Interface:** Added subcommands for `sync`, `list-calendars`, and `configure` using `swift-argument-parser`.
-- **Testing:** Scaffolded a basic test suite using the **Swift Testing** framework.
+- **Project Setup:** Swift 6.2 executable package (`CalSync`) with `CalSyncLib` library.
+- **SwiftData Models:** `EventMapping` and `CalendarMapping` with dual checksums (`icloudChecksum` / `googleChecksum`) for bidirectional change detection.
+- **Shared Checksum:** Cross-platform checksum computation with ISO 8601 date normalization for consistent comparison between iCloud and Google events.
+- **Service Protocols with Mocks:** Protocol-based service layer enabling unit testing without live API calls.
+- **KeychainService:** Secure token storage using the macOS Keychain.
+- **GoogleAuthService:** OAuth2 flow with Keychain-backed token persistence and automatic refresh.
+- **GoogleCalendarService:** Full CRUD operations against Google Calendar API with automatic 401 retry on token expiry.
+- **iCloudService:** EventKit integration for reading and writing iCloud calendar events.
+- **Three-Phase Bidirectional SyncEngine:**
+  1. iCloud change detection and push to Google.
+  2. Google change detection and push to iCloud.
+  3. Deletion arbitration across both sides.
+  - iCloud-wins conflict resolution.
+- **CLI Commands:**
+  - `calsync status` — view sync state.
+  - `calsync install` / `calsync uninstall` — manage launchd scheduling.
+  - `calsync configure` — Google OAuth setup with auto-create Google Calendar.
+  - `calsync sync` — run bidirectional sync.
+  - `calsync list-calendars` — show available iCloud calendars.
+- **Testing:** Unit test suite using the Swift Testing framework with mock services.
 
-### In Progress / Blocked
-- **Build Blocker:** Currently unable to compile or run binaries due to 'Santa' security interception on the corporate laptop.
-- **Google API Integration:** `GoogleCalendarService` is scaffolded but requires full REST implementation (Update/Delete) and OAuth2 flow.
-
-## Next Steps
-Once the build system is accessible:
-
-1.  **Verify Build:** Successfully run `swift build` and approve the resulting binaries in 'Santa'.
-2.  **OAuth2 Implementation:** Build a small local redirect server to handle the Google Calendar authorization flow and securely store tokens.
-3.  **Refine Sync Engine:**
-    - Implement event deletion (removing Google events if the iCloud source is gone).
-    - Add batching for API requests to improve performance.
-4.  **Integration Testing:** Run the tool against real iCloud calendars and verify the "Single Pane of Glass" view in Google Calendar.
-5.  **P1 Implementation (Optional):** Explore strictly-filtered two-way sync as discussed in the design doc.
+### Remaining
+- **Manual Testing:** End-to-end testing with real iCloud and Google calendars.
+- **Edge Case Hardening:** Handle network failures, partial sync recovery, and API rate limits.
+- **Title/Description Edit Support:** Detect and sync edits to event titles and descriptions (currently checksum covers time/date changes).
 
 ---
-*Last Updated: Tuesday, March 24, 2026*
+*Last Updated: Tuesday, March 25, 2026*
