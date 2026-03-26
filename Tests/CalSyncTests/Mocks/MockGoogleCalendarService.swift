@@ -16,4 +16,5 @@ actor MockGoogleCalendarService: GoogleCalendarServiceProtocol {
     func updateEvent(calendarID: String, eventID: String, event: GoogleEvent) async throws { updatedEvents.append((calendarID: calendarID, eventID: eventID)) }
     func deleteEvent(calendarID: String, eventID: String) async throws { deletedEvents.append((calendarID: calendarID, eventID: eventID)) }
     func setEvents(for calendarID: String, events: [GoogleEvent]) { self.events[calendarID] = events }
+    func setNextCreatedEventID(_ id: String) { self.nextCreatedEventID = id }
 }
