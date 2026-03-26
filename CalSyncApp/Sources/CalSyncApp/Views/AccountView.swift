@@ -27,10 +27,10 @@ struct AccountView: View {
                     Spacer()
                     if appState.isAuthenticated {
                         Label("Authenticated", systemImage: "checkmark.circle.fill")
-                            .foregroundColor(.green)
+                            .foregroundStyle(.green)
                     } else {
                         Label("Not Authenticated", systemImage: "xmark.circle.fill")
-                            .foregroundColor(.red)
+                            .foregroundStyle(.red)
                     }
                 }
             }
@@ -38,7 +38,7 @@ struct AccountView: View {
             if let error = appState.syncError {
                 Section("Error") {
                     Text(error)
-                        .foregroundColor(.red)
+                        .foregroundStyle(.red)
                         .font(.caption)
                 }
             }

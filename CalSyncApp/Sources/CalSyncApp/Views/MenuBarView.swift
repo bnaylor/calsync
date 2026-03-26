@@ -31,15 +31,15 @@ struct MenuBarView: View {
                 if appState.isSyncing {
                     Text("Syncing...")
                         .font(.caption)
-                        .foregroundColor(.blue)
+                        .foregroundStyle(.blue)
                 } else if let lastSync = appState.lastSyncDate {
                     Text("Last synced: \(lastSync.formatted(.relative(presentation: .named)))")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 } else {
                     Text("Not synced yet")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
             }
             
@@ -61,18 +61,18 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("CALENDARS (\(mappings.count))")
                 .font(.caption.bold())
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
             
             if mappings.isEmpty {
                 Text("No calendars configured.")
                     .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                     .padding(.vertical, 4)
             } else {
                 ForEach(mappings) { mapping in
                     HStack {
                         Image(systemName: "calendar")
-                            .foregroundColor(.blue)
+                            .foregroundStyle(.blue)
                         Text(mapping.name)
                             .lineLimit(1)
                         Spacer()

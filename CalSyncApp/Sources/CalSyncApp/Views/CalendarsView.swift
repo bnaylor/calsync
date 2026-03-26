@@ -22,21 +22,19 @@ struct CalendarsView: View {
                                     .font(.headline)
                                 Text("iCloud ID: \(mapping.icloudIdentifier)")
                                     .font(.caption)
-                                    .foregroundColor(.secondary)
+                                    .foregroundStyle(.secondary)
                                 if let googleId = mapping.googleCalendarID {
                                     Text("Google ID: \(googleId)")
                                         .font(.caption)
-                                        .foregroundColor(.secondary)
+                                        .foregroundStyle(.secondary)
                                 }
                             }
                             
                             Spacer()
                             
-                            Toggle("", isOn: Binding(
-                                get: { mapping.isEnabled },
-                                set: { mapping.isEnabled = $0 }
-                            ))
-                            .toggleStyle(.switch)
+                            let bindable = Bindable(mapping)
+                            Toggle("", isOn: bindable.isEnabled)
+                                .toggleStyle(.switch)
                         }
                         .padding(.vertical, 4)
                         .swipeActions {
