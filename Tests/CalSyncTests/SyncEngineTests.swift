@@ -120,6 +120,101 @@ struct SyncEngineTests {
         #expect(remaining.isEmpty)
     }
 
+    // MARK: - Phase 2 Tests
+
+    @Test("Phase 2: Google-only change pushes to iCloud")
+    func phase2GoogleOnlyChange() async throws {
+        let container = try makeContainer()
+        let mockiCloud = MockiCloudService()
+        let mockGoogle = MockGoogleCalendarService()
+
+        let context = ModelContext(container)
+        let calMapping = CalendarMapping(icloudIdentifier: "ical1", googleCalendarID: "gcal1", name: "Test")
+        context.insert(calMapping)
+
+        let now = Date()
+        let originalChecksum = Checksum.compute(
+            title: "Original", description: nil, location: nil,
+            startDate: now, endDate: now.addingTimeInterval(3600),
+            isAllDay: false, status: "confirmed"
+        )
+        let eventMapping = EventMapping(
+            icloudUID: "uid1", googleEventID: "gid1", calendarMappingID: "ical1",
+            icloudChecksum: originalChecksum, googleChecksum: originalChecksum,
+            syncDirection: "icloud"
+        )
+        context.insert(eventMapping)
+        try context.save()
+
+        // iCloud returns the same event (unchanged)
+        let icloudEvent = iCloudEvent(
+            id: "uid1", title: "Original", notes: nil, location: nil,
+            startDate: now, endDate: now.addingTimeInterval(3600),
+            isAllDay: false, status: "confirmed", checksum: originalChecksum
+        )
+        await mockiCloud.setEvents(for: "ical1", events: [icloudEvent])
+
+        // Google returns modified event
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        let modifiedGoogle = GoogleEvent(
+            id: "gid1", summary: "Modified Title", description: nil, location: nil,
+            start: GoogleEvent.EventDateTime(dateTime: formatter.string(from: now)),
+            end: GoogleEvent.EventDateTime(dateTime: formatter.string(from: now.addingTimeInterval(3600))),
+            status: "confirmed"
+        )
+        await mockGoogle.setEvents(for: "gcal1", events: [modifiedGoogle])
+
+        let engine = SyncEngine(modelContainer: container, icloudService: mockiCloud, googleService: mockGoogle)
+        try await engine.sync()
+
+        // Should have pushed the Google change to iCloud
+        let updated = await mockiCloud.updatedEvents
+        #expect(updated.count == 1)
+        #expect(updated.first == "uid1")
+    }
+
+    @Test("Phase 2: New Google event creates iCloud event")
+    func phase2NewGoogleEvent() async throws {
+        let container = try makeContainer()
+        let mockiCloud = MockiCloudService()
+        let mockGoogle = MockGoogleCalendarService()
+
+        let context = ModelContext(container)
+        let calMapping = CalendarMapping(icloudIdentifier: "ical1", googleCalendarID: "gcal1", name: "Test")
+        context.insert(calMapping)
+        try context.save()
+
+        let now = Date()
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        let newGoogleEvent = GoogleEvent(
+            id: "google-new-1", summary: "From Google", description: nil, location: nil,
+            start: GoogleEvent.EventDateTime(dateTime: formatter.string(from: now)),
+            end: GoogleEvent.EventDateTime(dateTime: formatter.string(from: now.addingTimeInterval(3600))),
+            status: "confirmed"
+        )
+        await mockGoogle.setEvents(for: "gcal1", events: [newGoogleEvent])
+        await mockiCloud.setEvents(for: "ical1", events: [])
+
+        let engine = SyncEngine(modelContainer: container, icloudService: mockiCloud, googleService: mockGoogle)
+        try await engine.sync()
+
+        // Should have created an iCloud event
+        let created = await mockiCloud.createdEvents
+        #expect(created.count == 1)
+        #expect(created.first?.title == "From Google")
+
+        // Should have mapping with syncDirection "google"
+        let verifyContext = ModelContext(container)
+        let mappings = try verifyContext.fetch(FetchDescriptor<EventMapping>())
+        #expect(mappings.count == 1)
+        #expect(mappings.first?.syncDirection == "google")
+        #expect(mappings.first?.googleEventID == "google-new-1")
+    }
+
+    // MARK: - Phase 3 Tests
+
     @Test("Phase 3: deletedOnIcloud + iCloud-originated deletes from Google")
     func phase3DeletedOnIcloudFromIcloud() async throws {
         let container = try makeContainer()

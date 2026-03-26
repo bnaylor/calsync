@@ -124,7 +124,7 @@ public actor SyncEngine: ModelActor {
                         existing.lastSyncDate = .now
                         logger.info("Pushed Google changes to iCloud for: \(gEvent.summary)")
                     } else {
-                        existing.googleChecksum = existing.icloudChecksum
+                        // Phase 1 already pushed iCloud version to Google and set googleChecksum — no action needed
                         logger.info("Conflict resolved (iCloud wins) for: \(gEvent.summary)")
                     }
                 }
