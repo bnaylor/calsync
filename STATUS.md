@@ -24,11 +24,16 @@ Personal-use bidirectional sync tool between private shared iCloud calendars and
   - `calsync sync` — run bidirectional sync.
   - `calsync list-calendars` — show available iCloud calendars.
 - **Testing:** Unit test suite using the Swift Testing framework with mock services.
+- **Menu Bar App:** SwiftUI menu bar app (`CalSyncApp`) with popover status view, manual sync trigger, and Settings window for calendar mapping and Google account management. Runs via `./CalSyncApp/run.sh`.
+- **Documentation:** User guide, README, and updated design docs.
+- **Production:** CLI actively syncing real iCloud and Google calendars.
 
 ### Remaining
-- **Manual Testing:** End-to-end testing with real iCloud and Google calendars.
+- **Menu Bar App — Auth UX:** OAuth flow has no in-app feedback while waiting for the browser redirect; re-auth requires dropping to the CLI.
+- **Menu Bar App — Focus/Polish:** Popover focus, dismiss-on-outside-click, and Settings window activation have rough edges.
+- **Menu Bar App — Xcode Project:** `run.sh` dev launcher works but a proper Xcode project is needed for distribution.
 - **Edge Case Hardening:** Handle network failures, partial sync recovery, and API rate limits.
 - **Title/Description Edit Support:** Detect and sync edits to event titles and descriptions (currently checksum covers time/date changes).
 
 ---
-*Last Updated: Tuesday, March 25, 2026*
+*Last Updated: Friday, March 27, 2026*
