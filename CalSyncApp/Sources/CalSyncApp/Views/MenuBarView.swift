@@ -5,6 +5,7 @@ import CalSyncLib
 struct MenuBarView: View {
     @Bindable var appState: AppState
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.openSettings) private var openSettings
     @Query private var mappings: [CalendarMapping]
     
     var body: some View {
@@ -90,8 +91,7 @@ struct MenuBarView: View {
     private var footer: some View {
         HStack {
             Button("Settings...") {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                NSApp.activate(ignoringOtherApps: true)
+                openSettings()
             }
             
             Spacer()
