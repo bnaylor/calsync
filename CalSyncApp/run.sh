@@ -43,8 +43,13 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << 'EOF'
 </plist>
 EOF
 
+echo "Signing..."
+# Ad-hoc signing is required on macOS for GUI apps (MenuBarExtra) to claim menu bar space
+codesign --force --deep --sign - "$APP_BUNDLE"
+
 echo "Launching CalSync..."
 # Kill any existing instance
 pkill -f "CalSyncApp.app/Contents/MacOS/CalSyncApp" 2>/dev/null || true
+sleep 0.5
 
 open "$APP_BUNDLE"
