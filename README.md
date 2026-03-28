@@ -29,7 +29,7 @@ When the same event is changed on both sides between syncs, iCloud wins.
 ## Installation
 
 ```bash
-git clone https://github.com/yourname/calsync
+git clone https://github.com/bnaylor/calsync
 cd calsync
 swift build -c release
 cp .build/release/CalSync /usr/local/bin/calsync

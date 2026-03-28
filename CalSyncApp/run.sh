@@ -52,6 +52,7 @@ echo "Signing..."
 codesign --force --deep --sign - "$APP_BUNDLE"
 
 echo "Launching CalSync..."
+echo "Note: if the icon doesn't appear, the menu bar may be full — extras overflow off the left edge silently."
 # Kill any existing instance
 pkill -f "CalSyncApp.app/Contents/MacOS/CalSyncApp" 2>/dev/null || true
 sleep 0.5
