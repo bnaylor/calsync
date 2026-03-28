@@ -31,14 +31,18 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << 'EOF'
     <string>CalSync</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
     <key>CFBundleVersion</key>
     <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
     <key>LSUIElement</key>
+    <true/>
+    <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSCalendarsUsageDescription</key>
     <string>CalSync needs access to your calendars to sync events.</string>
-    <key>NSPrincipalClass</key>
-    <string>NSApplication</string>
 </dict>
 </plist>
 EOF
