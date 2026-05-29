@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 
+binary=.build/release/CalSync
 path=~/bin/calsync
 
 if [ -n "$1" ] ; then
     path="$1"
 fi
 
+echo "Building.."
 swift build
+
+echo "Copying ${binary} to ${path}.."
 cp .build/release/CalSync "${path}"
+
+echo "Signing ${path}.."
 codesign --force --sign - ${path}
 
