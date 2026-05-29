@@ -7,7 +7,7 @@ import CalSyncLib
 struct CalSync: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Syncs private iCloud calendars to Google Calendar.",
-        subcommands: [Sync.self, ListCalendars.self, ListGoogleCalendars.self, Configure.self, Remove.self, Auth.self, Status.self, Install.self, Uninstall.self]
+        subcommands: [Sync.self, ListCalendars.self, ListGoogleCalendars.self, Configure.self, Remove.self, Auth.self, Status.self, Uninstall.self]
     )
 
     struct Auth: AsyncParsableCommand {

@@ -1,20 +1,38 @@
 import SwiftUI
 import SwiftData
 import CalSyncLib
+import UserNotifications
 
 @MainActor
 @Observable
 public final class AppState {
     public var isSyncing = false
-    public var lastSyncDate: Date?
     public var syncError: String?
-
     public var isAuthenticated = false
 
     public var availableCalendars: [iCloudCalendar] = []
     public var isFetchingCalendars = false
     public var availableGoogleCalendars: [String: String] = [:]
     public var isFetchingGoogleCalendars = false
+
+    // Persisted across launches
+    public var lastSuccessfulSync: Date? {
+        didSet { UserDefaults.standard.set(lastSuccessfulSync, forKey: "lastSuccessfulSync") }
+    }
+    public var syncIntervalMinutes: Int {
+        didSet { UserDefaults.standard.set(syncIntervalMinutes, forKey: "syncIntervalMinutes") }
+    }
+    public var staleThresholdHours: Int {
+        didSet { UserDefaults.standard.set(staleThresholdHours, forKey: "staleThresholdHours") }
+    }
+
+    private var lastNotificationSent: Date? {
+        get { UserDefaults.standard.object(forKey: "lastNotificationSent") as? Date }
+        set { UserDefaults.standard.set(newValue, forKey: "lastNotificationSent") }
+    }
+
+    @ObservationIgnored private var modelContainer: ModelContainer?
+    @ObservationIgnored private var syncLoopTask: Task<Void, Never>?
 
     private let authService: GoogleAuthService
     private let icloudService: iCloudService
@@ -25,28 +43,86 @@ public final class AppState {
         self.authService = auth
         self.icloudService = iCloudService()
         self.googleService = GoogleCalendarService(authService: auth)
+
+        let storedInterval = UserDefaults.standard.integer(forKey: "syncIntervalMinutes")
+        self.syncIntervalMinutes = storedInterval > 0 ? storedInterval : 10
+        let storedThreshold = UserDefaults.standard.integer(forKey: "staleThresholdHours")
+        self.staleThresholdHours = storedThreshold > 0 ? storedThreshold : 4
+        self.lastSuccessfulSync = UserDefaults.standard.object(forKey: "lastSuccessfulSync") as? Date
     }
 
-    public func startSync(modelContext: ModelContext) async {
-        guard !isSyncing else { return }
+    // Called once from the first view appear — idempotent
+    public func start(container: ModelContainer) {
+        guard modelContainer == nil else { return }
+        modelContainer = container
+        Task { await checkAuthStatus() }
+        requestNotificationPermission()
+        startSyncLoop()
+    }
 
+    // MARK: - Sync Loop
+
+    private func startSyncLoop() {
+        syncLoopTask?.cancel()
+        syncLoopTask = Task {
+            while !Task.isCancelled {
+                await triggerSync()
+                try? await Task.sleep(for: .seconds(Double(syncIntervalMinutes) * 60))
+            }
+        }
+    }
+
+    public func triggerSync() async {
+        guard let container = modelContainer, !isSyncing else { return }
         isSyncing = true
         syncError = nil
-
         do {
             let engine = SyncEngine(
-                modelContainer: modelContext.container,
+                modelContainer: container,
                 icloudService: icloudService,
                 googleService: googleService
             )
             try await engine.sync()
-            lastSyncDate = .now
+            lastSuccessfulSync = .now
         } catch {
             syncError = error.localizedDescription
         }
-
         isSyncing = false
+        checkAndSendStalenessNotification()
     }
+
+    // MARK: - Staleness Notification
+
+    private func checkAndSendStalenessNotification() {
+        // Only notify if there's been at least one successful sync — don't spam on fresh installs
+        guard let lastSuccess = lastSuccessfulSync else { return }
+
+        let stale = Date().timeIntervalSince(lastSuccess) > Double(staleThresholdHours) * 3600
+        guard stale else { return }
+
+        let cooldown: TimeInterval = 24 * 3600
+        if let last = lastNotificationSent, Date().timeIntervalSince(last) < cooldown { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "CalSync — Sync Overdue"
+        let hours = Int(Date().timeIntervalSince(lastSuccess) / 3600)
+        content.body = "Last successful sync was \(hours) hour\(hours == 1 ? "" : "s") ago."
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "com.calsync.stale",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
+        lastNotificationSent = .now
+    }
+
+    private func requestNotificationPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    }
+
+    // MARK: - Auth
 
     public func authenticate(clientId: String, clientSecret: String) async {
         do {
@@ -67,6 +143,8 @@ public final class AppState {
             isAuthenticated = false
         }
     }
+
+    // MARK: - Calendars
 
     public func fetchAvailableCalendars() async {
         isFetchingCalendars = true

@@ -5,8 +5,7 @@ import CalSyncLib
 @main
 struct CalSyncApp: App {
     @State private var appState = AppState()
-    
-    // The ModelContainer for our shared schema
+
     var sharedModelContainer: ModelContainer = {
         do {
             return try ModelContainerFactory.makeContainer()
@@ -16,12 +15,13 @@ struct CalSyncApp: App {
     }()
 
     var body: some Scene {
-        MenuBarExtra("CalSync", systemImage: "calendar.badge.clock") {
+        MenuBarExtra("CalSync", systemImage: appState.syncError != nil ? "calendar.badge.exclamationmark" : "calendar.badge.clock") {
             MenuBarView(appState: appState)
                 .modelContainer(sharedModelContainer)
+                .task { appState.start(container: sharedModelContainer) }
         }
         .menuBarExtraStyle(.window)
-        
+
         Settings {
             SettingsView(appState: appState)
                 .modelContainer(sharedModelContainer)
