@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+path=~/bin/calsync
+
+if [ -n "$1" ] ; then
+    path="$1"
+fi
+
+swift build
+cp .build/release/CalSync "${path}"
+codesign --force --sign - ${path}
+
