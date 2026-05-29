@@ -7,7 +7,7 @@ import CalSyncLib
 struct CalSync: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Syncs private iCloud calendars to Google Calendar.",
-        subcommands: [Sync.self, ListCalendars.self, Configure.self, Auth.self, Status.self, Install.self, Uninstall.self]
+        subcommands: [Sync.self, ListCalendars.self, ListGoogleCalendars.self, Configure.self, Remove.self, Auth.self, Status.self, Install.self, Uninstall.self]
     )
 
     struct Auth: AsyncParsableCommand {
@@ -31,8 +31,11 @@ struct CalSync: AsyncParsableCommand {
         @Argument(help: "The iCloud calendar identifier.")
         var icloudID: String
 
-        @Option(name: .shortAndLong, help: "The name for the Google Calendar (defaults to iCloud calendar name).")
+        @Option(name: .shortAndLong, help: "The name for this mapping (defaults to iCloud calendar name).")
         var name: String?
+
+        @Option(name: .long, help: "Link to an existing Google Calendar by ID instead of creating a new one.")
+        var googleID: String?
 
         @Option(name: .long, help: "Days to look back (default: 7).")
         var past: Int = 7
@@ -49,14 +52,20 @@ struct CalSync: AsyncParsableCommand {
                 return
             }
 
-            let calendarName = name ?? calendar.title
             let authService = GoogleAuthService()
             let googleService = GoogleCalendarService(authService: authService)
+            let calendarName = name ?? calendar.title
 
-            print("Creating Google Calendar: \(calendarName)...")
-            let googleCalendarID = try await googleService.createCalendar(name: calendarName)
+            let googleCalendarID: String
+            if let existingID = googleID {
+                googleCalendarID = existingID
+                print("Linking to existing Google Calendar: \(googleCalendarID)")
+            } else {
+                print("Creating Google Calendar: \(calendarName)...")
+                googleCalendarID = try await googleService.createCalendar(name: calendarName)
+            }
 
-            let container = try ModelContainer(for: CalendarMapping.self, EventMapping.self)
+            let container = try ModelContainerFactory.makeContainer()
             let context = ModelContext(container)
             let mapping = CalendarMapping(
                 icloudIdentifier: icloudID,
@@ -79,7 +88,7 @@ struct CalSync: AsyncParsableCommand {
         static let configuration = CommandConfiguration(abstract: "Run the sync process.")
 
         func run() async throws {
-            let container = try ModelContainer(for: EventMapping.self, CalendarMapping.self)
+            let container = try ModelContainerFactory.makeContainer()
             let authService = GoogleAuthService()
             let googleService = GoogleCalendarService(authService: authService)
             let engine = SyncEngine(
@@ -108,11 +117,65 @@ struct CalSync: AsyncParsableCommand {
         }
     }
 
+    struct ListGoogleCalendars: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "List available Google Calendars.")
+
+        func run() async throws {
+            let authService = GoogleAuthService()
+            let googleService = GoogleCalendarService(authService: authService)
+            let calendars = try await googleService.listCalendars()
+
+            print("Found \(calendars.count) Google Calendars:")
+            for (id, name) in calendars.sorted(by: { $0.value < $1.value }) {
+                print("- \(name) (ID: \(id))")
+            }
+        }
+    }
+
+    struct Remove: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "Remove a configured calendar mapping.")
+
+        @Argument(help: "The iCloud calendar identifier to remove.")
+        var icloudID: String
+
+        @Flag(name: .long, help: "Skip confirmation prompt.")
+        var yes: Bool = false
+
+        func run() async throws {
+            let container = try ModelContainerFactory.makeContainer()
+            let context = ModelContext(container)
+            let id = icloudID
+            let mappings = try context.fetch(FetchDescriptor<CalendarMapping>(predicate: #Predicate { $0.icloudIdentifier == id }))
+
+            guard let mapping = mappings.first else {
+                print("No mapping found for iCloud ID '\(icloudID)'.")
+                print("Run 'calsync status' to see configured calendars.")
+                return
+            }
+
+            if !yes {
+                print("Remove mapping '\(mapping.name)' (\(icloudID))? [y/N] ", terminator: "")
+                guard let input = readLine(), input.lowercased() == "y" else {
+                    print("Aborted.")
+                    return
+                }
+            }
+
+            let eventDescriptor = FetchDescriptor<EventMapping>(predicate: #Predicate { $0.calendarMappingID == id })
+            let events = try context.fetch(eventDescriptor)
+            for event in events { context.delete(event) }
+            context.delete(mapping)
+            try context.save()
+
+            print("Removed '\(mapping.name)' and \(events.count) event mapping(s).")
+        }
+    }
+
     struct Status: AsyncParsableCommand {
         static let configuration = CommandConfiguration(abstract: "Show sync status for configured calendars.")
 
         func run() async throws {
-            let container = try ModelContainer(for: CalendarMapping.self, EventMapping.self)
+            let container = try ModelContainerFactory.makeContainer()
             let context = ModelContext(container)
             let mappings = try context.fetch(FetchDescriptor<CalendarMapping>())
 

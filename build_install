@@ -8,10 +8,10 @@ if [ -n "$1" ] ; then
 fi
 
 echo "Building.."
-swift build
+swift build -c release
 
 echo "Copying ${binary} to ${path}.."
-cp .build/release/CalSync "${path}"
+cp "${binary}" "${path}"
 
 echo "Signing ${path}.."
 codesign --force --sign - ${path}

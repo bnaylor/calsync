@@ -57,4 +57,5 @@ echo "Note: if the icon doesn't appear, the menu bar may be full — extras over
 pkill -f "CalSyncApp.app/Contents/MacOS/CalSyncApp" 2>/dev/null || true
 sleep 0.5
 
+echo open "$APP_BUNDLE"
 open "$APP_BUNDLE"

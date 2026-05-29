@@ -13,6 +13,8 @@ public final class AppState {
 
     public var availableCalendars: [iCloudCalendar] = []
     public var isFetchingCalendars = false
+    public var availableGoogleCalendars: [String: String] = [:]
+    public var isFetchingGoogleCalendars = false
 
     private let authService: GoogleAuthService
     private let icloudService: iCloudService
@@ -76,9 +78,24 @@ public final class AppState {
         isFetchingCalendars = false
     }
 
-    public func addCalendarMapping(icloudCalendar: iCloudCalendar, name: String, modelContext: ModelContext) async {
+    public func fetchGoogleCalendars() async {
+        isFetchingGoogleCalendars = true
         do {
-            let googleCalendarID = try await googleService.createCalendar(name: name)
+            availableGoogleCalendars = try await googleService.listCalendars()
+        } catch {
+            syncError = "Failed to fetch Google Calendars: \(error.localizedDescription)"
+        }
+        isFetchingGoogleCalendars = false
+    }
+
+    public func addCalendarMapping(icloudCalendar: iCloudCalendar, name: String, existingGoogleID: String? = nil, modelContext: ModelContext) async {
+        do {
+            let googleCalendarID: String
+            if let existingID = existingGoogleID {
+                googleCalendarID = existingID
+            } else {
+                googleCalendarID = try await googleService.createCalendar(name: name)
+            }
             let mapping = CalendarMapping(
                 icloudIdentifier: icloudCalendar.id,
                 googleCalendarID: googleCalendarID,
@@ -87,7 +104,7 @@ public final class AppState {
             modelContext.insert(mapping)
             try modelContext.save()
         } catch {
-            syncError = "Failed to create calendar mapping: \(error.localizedDescription)"
+            syncError = "Failed to add calendar mapping: \(error.localizedDescription)"
         }
     }
 }

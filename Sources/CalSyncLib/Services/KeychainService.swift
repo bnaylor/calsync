@@ -15,21 +15,26 @@ public struct KeychainService: Sendable {
 
     public func save(key: String, value: String) throws {
         let data = Data(value.utf8)
-        let deleteQuery: [String: Any] = [
+        let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
             kSecAttrAccount as String: key
         ]
-        SecItemDelete(deleteQuery as CFDictionary)
 
-        let addQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
-            kSecAttrAccount as String: key,
-            kSecValueData as String: data
-        ]
-        let status = SecItemAdd(addQuery as CFDictionary, nil)
-        guard status == errSecSuccess else {
+        var attributes = query
+        attributes[kSecValueData as String] = data
+
+        let status = SecItemAdd(attributes as CFDictionary, nil)
+
+        if status == errSecDuplicateItem {
+            let updateAttributes: [String: Any] = [
+                kSecValueData as String: data
+            ]
+            let updateStatus = SecItemUpdate(query as CFDictionary, updateAttributes as CFDictionary)
+            guard updateStatus == errSecSuccess else {
+                throw KeychainError.saveFailed(updateStatus)
+            }
+        } else if status != errSecSuccess {
             throw KeychainError.saveFailed(status)
         }
     }

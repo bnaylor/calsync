@@ -9,10 +9,17 @@ struct NewMappingView: View {
 
     @State private var selectedIcloudID: String = ""
     @State private var name: String = ""
+    @State private var useExistingGoogle = false
+    @State private var selectedGoogleID: String = ""
     @State private var isCreating = false
 
     private var selectedCalendar: iCloudCalendar? {
         appState.availableCalendars.first(where: { $0.id == selectedIcloudID })
+    }
+
+    private var canAdd: Bool {
+        guard !selectedIcloudID.isEmpty && !name.isEmpty && !isCreating else { return false }
+        return useExistingGoogle ? !selectedGoogleID.isEmpty : true
     }
 
     var body: some View {
@@ -36,9 +43,31 @@ struct NewMappingView: View {
                     TextField("Name", text: $name)
                         .disabled(selectedIcloudID.isEmpty)
                 } header: {
-                    Text("Google Calendar Name")
+                    Text("Mapping Name")
+                }
+
+                Section {
+                    Toggle("Link to existing Google Calendar", isOn: $useExistingGoogle)
+                        .disabled(selectedIcloudID.isEmpty)
+
+                    if useExistingGoogle {
+                        if appState.isFetchingGoogleCalendars {
+                            ProgressView("Fetching Google Calendars...")
+                        } else {
+                            Picker("Google Calendar", selection: $selectedGoogleID) {
+                                Text("Select a calendar").tag("")
+                                ForEach(appState.availableGoogleCalendars.sorted(by: { $0.value < $1.value }), id: \.key) { id, calName in
+                                    Text(calName).tag(id)
+                                }
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Google Calendar")
                 } footer: {
-                    Text("A new Google Calendar will be created with this name.")
+                    Text(useExistingGoogle
+                         ? "Events in the selected Google Calendar will sync to iCloud."
+                         : "A new Google Calendar will be created with the mapping name.")
                         .foregroundStyle(.secondary)
                 }
             }
@@ -55,18 +84,20 @@ struct NewMappingView: View {
                             await appState.addCalendarMapping(
                                 icloudCalendar: calendar,
                                 name: name,
+                                existingGoogleID: useExistingGoogle ? selectedGoogleID : nil,
                                 modelContext: modelContext
                             )
                             isCreating = false
                             dismiss()
                         }
                     }
-                    .disabled(selectedIcloudID.isEmpty || name.isEmpty || isCreating)
+                    .disabled(!canAdd)
                 }
             }
             .onAppear {
                 Task {
                     await appState.fetchAvailableCalendars()
+                    await appState.fetchGoogleCalendars()
                 }
             }
             .onChange(of: selectedIcloudID) { _, newValue in

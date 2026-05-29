@@ -8,14 +8,8 @@ struct CalSyncApp: App {
     
     // The ModelContainer for our shared schema
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            CalendarMapping.self,
-            EventMapping.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
         do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            return try ModelContainerFactory.makeContainer()
         } catch {
             fatalError("Could not create ModelContainer: \(error)")
         }
